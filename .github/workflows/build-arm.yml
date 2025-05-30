@@ -26,9 +26,9 @@ jobs:
     - name: Build ARM binary
       run: |
         pyinstaller \
-          --add-data "$(python 
--stice-packages/piper_phonemize/espeak-ng-data:piper_phonemize/espeak-ng-data" 
-\
+          --add-data "$(python -c 'import piper_phonemize; import os; 
+print(os.path.join(os.path.dirname(piper_phonemize.__file__), 
+\"espeak-ng-data\"))'):piper_phonemize/espeak-ng-data" \
           --onefile \
           --name piper-arm \
           piper_main.py
