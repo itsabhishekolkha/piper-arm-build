@@ -12,14 +12,24 @@ jobs:
     steps:
     - uses: actions/checkout@v4
     
-    - name: Set up Python 3.12
+    - name: Set up Python 3.11
       uses: actions/setup-python@v4
       with:
-        python-version: '3.12'
+        python-version: '3.11'
+    
+    # Install system dependencies needed for building piper-phonemize
+    - name: Install system dependencies
+      run: |
+        brew install espeak-ng cmake
     
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
+        # Install build tools first
+        pip install wheel setuptools Cython
+        # Try installing piper-phonemize first (may need to build from source)
+        pip install piper-phonemize
+        # Then install piper-tts
         pip install piper-tts==1.2.0
         pip install pyinstaller
     
