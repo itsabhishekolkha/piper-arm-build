@@ -12,48 +12,38 @@ jobs:
     steps:
     - uses: actions/checkout@v4
     
-    - name: Set up Python 3.11
+    - name: Set up Python 3.12
       uses: actions/setup-python@v4
       with:
-        python-version: '3.11'
+        python-version: '3.12'
     
-    # Install system dependencies needed for building piper-phonemize
-    - name: Install system dependencies
+    - name: Install system dependencies and set environment
       run: |
         brew install espeak-ng cmake pkg-config
-        # Set environment variables for building
-        echo 'export PKG_CONFIG_PATH="/opt/homebrew/lib/pkgconfig:$PKG_CONFIG_PATH"' >> ~/.bash_profile
-        echo 'export CPATH="/opt/homebrew/include:$CPATH"' >> ~/.bash_profile
-        echo 'export LIBRARY_PATH="/opt/homebrew/lib:$LIBRARY_PATH"' >> ~/.bash_profile
-        source ~/.bash_profile
+        # Set environment variables for ARM64 compilation
+        echo "PKG_CONFIG_PATH=/opt/homebrew/lib/pkgconfig:$PKG_CONFIG_PATH" >> $GITHUB_ENV
+        echo "CPATH=/opt/homebrew/include:$CPATH" >> $GITHUB_ENV
+        echo "LIBRARY_PATH=/opt/homebrew/lib:$LIBRARY_PATH" >> $GITHUB_ENV
+        echo "LDFLAGS=-L/opt/homebrew/lib" >> $GITHUB_ENV
+        echo "CPPFLAGS=-I/opt/homebrew/include" >> $GITHUB_ENV
     
-    - name: Install dependencies with conda
+    - name: Install dependencies
       run: |
-        # Install conda
-        curl -L https://repo.anaconda.com/miniconda/Miniconda3-latest-MacOSX-arm64.sh -o miniconda.sh
-        bash miniconda.sh -b -p $HOME/miniconda
-        source $HOME/miniconda/bin/activate
-        conda init bash
-        source ~/.bash_profile
-        
-        # Create conda environment and install packages
-        conda create -n piper python=3.11 -y
-        conda activate piper
-        conda install -c conda-forge piper-tts -y
+        python -m pip install --upgrade pip
+        pip install wheel setuptools Cython numpy
+        # Try to install piper-phonemize from source
+        pip install --no-binary=piper-phonemize piper-phonemize --verbose
+        pip install piper-tts==1.2.0
         pip install pyinstaller
     
     - name: Find espeak-ng-data path
       id: espeak-path
       run: |
-        source $HOME/miniconda/bin/activate
-        conda activate piper
         ESPEAK_PATH=$(python -c "import piper_phonemize; import os; print(os.path.join(os.path.dirname(piper_phonemize.__file__), 'espeak-ng-data'))")
         echo "path=$ESPEAK_PATH" >> $GITHUB_OUTPUT
     
     - name: Build ARM binary
       run: |
-        source $HOME/miniconda/bin/activate
-        conda activate piper
         pyinstaller \
           --add-data "${{ steps.espeak-path.outputs.path }}:piper_phonemize/espeak-ng-data" \
           --onefile \
