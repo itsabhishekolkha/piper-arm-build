@@ -13,51 +13,27 @@ jobs:
       with:
         python-version: '3.12'
     
+    - name: Install system dependencies
+      run: |
+        brew install espeak-ng
+    
     - name: Create piper-tts-bundle and setup virtual environment
       run: |
-        # Create bundle folder
         mkdir piper-tts-bundle
         cd piper-tts-bundle
-        
-        # Create virtual environment with Python 3.12
         python3.12 -m venv venv
         source venv/bin/activate
-        
-        # Update pip
         pip install --upgrade pip
-        
+    
     - name: Install piper-tts with ARM64 workaround
       run: |
         cd piper-tts-bundle
         source venv/bin/activate
-        
-        # Method 1: Try installing with --no-deps to bypass piper-phonemize issue
-        echo "Attempting Method 1: Installing piper-tts with --no-deps..."
         pip install piper-tts==1.2.0 --no-deps
-        
-        # Install required dependencies manually
-        pip install numpy onnxruntime
-        
-        # Test if this works
-        python -c "from piper import PiperVoice; print('Method 1: Success - piper imported successfully')" || echo "Method 1 failed, trying alternative..."
-        
-        # Method 2: Alternative approach using pip install with ignore dependencies
-        if ! python -c "from piper import PiperVoice" 2>/dev/null; then
-          echo "Trying Method 2: Installing dependencies separately..."
-          pip uninstall -y piper-tts
-          
-          # Install core dependencies
-          pip install numpy>=1.19.0
-          pip install onnxruntime>=1.10.0
-          pip install typing-extensions
-          
-          # Try to install piper-tts again
-          pip install piper-tts==1.2.0 --no-deps
-          
-          # Test again
-          python -c "from piper import PiperVoice; print('Method 2: Success - piper imported successfully')" || echo "Method 2 also failed, but continuing..."
-        fi
-        
+        pip install numpy>=1.19.0 onnxruntime>=1.10.0 typing-extensions
+        pip install piper-phonemize-cross || echo "piper-phonemize-cross not available, continuing without it"
+        python -c "from piper import PiperVoice; print('Piper import successful')" || echo "Piper import failed, but continuing..."
+    
     - name: Download voice models
       run: |
         cd piper-tts-bundle
@@ -66,154 +42,110 @@ jobs:
         curl -L -O https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/lessac/medium/en_US-lessac-medium.onnx
         curl -L -O https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/lessac/medium/en_US-lessac-medium.onnx.json
         cd ..
-        
-    - name: Create piper_main.py with enhanced error handling
+    
+    - name: Create piper_main.py
       run: |
         cd piper-tts-bundle
         cat > piper_main.py << 'EOF'
         import sys
         import wave
         import argparse
-
         def main():
             parser = argparse.ArgumentParser()
             parser.add_argument("--model", required=True)
             parser.add_argument("--output_file", required=True)
             args = parser.parse_args()
-
-            # Read text from stdin
             text = sys.stdin.read().strip()
             if not text:
                 print("Error: No input text provided", file=sys.stderr)
                 sys.exit(1)
-
             try:
                 from piper import PiperVoice
-                
-                # Load voice
                 voice = PiperVoice.load(args.model)
-
-                # Synthesize
                 with wave.open(args.output_file, "w") as wav_file:
                     voice.synthesize(text, wav_file)
-                    
                 print(f"Audio successfully generated: {args.output_file}")
-                
             except ImportError as e:
                 print(f"Error importing piper: {e}", file=sys.stderr)
-                print("This may indicate an issue with the ARM64 build", file=sys.stderr)
                 sys.exit(1)
             except Exception as e:
                 print(f"Error during synthesis: {e}", file=sys.stderr)
                 sys.exit(1)
-
         if __name__ == "__main__":
             main()
         EOF
-        
+    
     - name: Test basic installation
       run: |
         cd piper-tts-bundle
         source venv/bin/activate
-        
-        # Test if piper can be imported
-        python -c "from piper import PiperVoice; print('Piper import successful')"
-        
-        # Create and run test script
         cat > test_piper.py << 'EOF'
         import wave
         from piper import PiperVoice
-
         model_path = "./voices/en_US-lessac-medium.onnx"
-        print(f"Loading model: {model_path}")
-        
         voice = PiperVoice.load(model_path)
         text = "Hello, this is a test of Piper TTS on your Apple Silicon Mac!"
-        print(f"Synthesizing: {text}")
-
         with wave.open("output.wav", "w") as wav_file:
             voice.synthesize(text, wav_file)
-
         print("Audio generated at output.wav")
         EOF
-        
         python3 test_piper.py
         ls -la output.wav
-        
+    
     - name: Install PyInstaller and build executable
       run: |
         cd piper-tts-bundle
         source venv/bin/activate
-        
-        # Install PyInstaller
         pip install pyinstaller
-        
-        # Build with comprehensive data inclusion for ARM64
-        echo "Building ARM64 executable..."
         pyinstaller \
           --onefile \
           --name piper \
           --add-data "venv/lib/python3.12/site-packages/piper:piper" \
-          --add-data "venv/lib/python3.12/site-packages/piper_phonemize:piper_phonemize" \
+          --add-data "venv/lib/python3.12/site-packages/piper_phonemize/espeak-ng-data:piper_phonemize/espeak-ng-data" \
           --hidden-import piper \
           --hidden-import piper.voice \
           --hidden-import numpy \
           --hidden-import onnxruntime \
-          piper_main.py || echo "PyInstaller build completed with warnings"
-        
-        # Test the built executable
+          piper_main.py
         echo "Testing ARM64 build..."
-        echo "Test speech for ARM64" | ./dist/piper --model voices/en_US-lessac-medium.onnx --output_file test_arm64.wav || echo "ARM64 build test completed"
-        
+        echo "Test speech for ARM64" | ./dist/piper --model voices/en_US-lessac-medium.onnx --output_file test_arm64.wav
+    
     - name: Create Desktop piper folder structure
       run: |
-        # Create the piper folder structure
         mkdir -p Desktop/piper/bin Desktop/piper/voices Desktop/piper/lib
-        
-        # Copy the executable
         cp piper-tts-bundle/dist/piper Desktop/piper/bin/
-        
-        # Copy voice models
         cp piper-tts-bundle/voices/en_US-lessac-medium.onnx Desktop/piper/voices/
         cp piper-tts-bundle/voices/en_US-lessac-medium.onnx.json Desktop/piper/voices/
-        
-        # Copy Python libraries as backup (for ARM64 compatibility)
         cp -r piper-tts-bundle/venv/lib/python3.12/site-packages/piper* Desktop/piper/lib/ 2>/dev/null || echo "Piper libraries copied"
         cp -r piper-tts-bundle/venv/lib/python3.12/site-packages/numpy* Desktop/piper/lib/ 2>/dev/null || echo "Numpy libraries copied"
         cp -r piper-tts-bundle/venv/lib/python3.12/site-packages/onnxruntime* Desktop/piper/lib/ 2>/dev/null || echo "ONNXRuntime libraries copied"
-        
-        # Clean up unnecessary files to reduce size
         rm -rf Desktop/piper/lib/pip Desktop/piper/lib/setuptools Desktop/piper/lib/*.dist-info 2>/dev/null || true
-        
+    
     - name: Test final piper folder
       run: |
         cd Desktop/piper
-        echo "Final test of ARM64 build from piper folder" | ./bin/piper --model voices/en_US-lessac-medium.onnx --output_file final_test_arm64.wav || echo "Final ARM64 test completed"
-        ls -la final_test_arm64.wav 2>/dev/null || echo "Testing completed (file may not exist if build has issues)"
-        
-        # Check structure
-        echo "Final folder structure:"
-        ls -R .
-        
+        echo "Final test of ARM64 build from piper folder" | ./bin/piper --model voices/en_US-lessac-medium.onnx --output_file final_test_arm64.wav
+        ls -la final_test_arm64.wav
+    
     - name: Get folder size
       run: |
         echo "Size of piper folder:"
         du -sh Desktop/piper
         echo "Size of executable:"
         ls -lh Desktop/piper/bin/piper
-        
+    
     - name: Create archive for upload
       run: |
         cd Desktop
         tar -czf piper-arm-alternative-bundle.tar.gz piper/
         ls -lh piper-arm-alternative-bundle.tar.gz
-        
+    
     - name: Upload ARM alternative binary bundle
       uses: actions/upload-artifact@v4
       with:
         name: piper-arm-alternative-bundle
         path: Desktop/piper-arm-alternative-bundle.tar.gz
-        
+    
     - name: Upload standalone executable
       uses: actions/upload-artifact@v4
       with:
