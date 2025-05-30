@@ -8,7 +8,7 @@
 
 **High-quality, fast text-to-speech for Apple Silicon Macs**
 
-[Download](#download) • [Quick Start](#quick-start) • [Build Methods](#build-methods) • [Support](#support-this-project)
+[Download](#download) • [Quick Start](#quick-start) • [Build Methods](#build-methods) • [⭐ Star Repository](#support-this-project) • [Support](#support-this-project)
 
 </div>
 
@@ -151,6 +151,8 @@ Contributions are welcome! Please feel free to:
 - Submit pull requests
 - Improve documentation
 
+**⭐ Love this project? Give it a star on GitHub!** Your star helps others discover these ARM64 builds and motivates continued development.
+
 ## License
 
 This project is licensed under the MIT License. See the [LICENSE](LICENSE) file for details.
@@ -164,8 +166,9 @@ If you find this project helpful, consider supporting its development:
 <div align="center">
 
 [![Buy Me A Coffee](https://img.shields.io/badge/Buy%20Me%20A%20Coffee-FFDD00?style=for-the-badge&logo=buy-me-a-coffee&logoColor=black)](https://www.buymeacoffee.com/yourusername)
+[![Star on GitHub](https://img.shields.io/badge/⭐%20Star%20on%20GitHub-black?style=for-the-badge&logo=github)](https://github.com/yourusername/piper-arm64)
 
-Your support helps maintain and improve these ARM64 builds for the community.
+Your support helps maintain and improve these ARM64 builds for the community. Consider starring the repository to show your appreciation!
 
 </div>
 
