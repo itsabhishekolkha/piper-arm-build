@@ -19,13 +19,14 @@ jobs:
 
     - name: Install system dependencies
       run: |
-        brew install espeak-ng
+        brew install espeak-ng cmake
 
     - name: Install Python dependencies
       run: |
         python -m pip install --upgrade pip
-        export CFLAGS="-I$(brew --prefix espeak-ng)/include"
+        export CFLAGS="-I$(brew --prefix espeak-ng)/include/espeak-ng"
         export LDFLAGS="-L$(brew --prefix espeak-ng)/lib"
+        export ARCHFLAGS="-arch arm64"
         pip install git+https://github.com/rhasspy/piper-phonemize.git
         pip install piper-tts==1.2.0
         pip install pyinstaller
