@@ -4,7 +4,7 @@
 
 [![ARM64](https://img.shields.io/badge/ARM64-Apple%20Silicon-green?style=for-the-badge&logo=apple)](https://github.com/yourusername/piper-arm64)
 [![License](https://img.shields.io/badge/License-MIT-yellow?style=for-the-badge)](LICENSE)
-[![GitHub Release](https://img.shields.io/github/v/release/yourusername/piper-arm64?style=for-the-badge)](https://github.com/yourusername/piper-arm64/releases)
+[![GitHub Release](https://img.shields.io/github/v/release/yourusername/piper-arm64?style=for-the-badge)](https://github.com/itsabhishekolkha/piper-arm-build/releases)
 
 **High-quality, fast text-to-speech for Apple Silicon Macs**
 
