@@ -8,27 +8,28 @@ on:
 jobs:
   build-arm:
     runs-on: macos-14
-    
+
     steps:
     - uses: actions/checkout@v4
-    
+
     - name: Set up Python 3.12
       uses: actions/setup-python@v4
       with:
         python-version: '3.12'
-    
+
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
+        pip install git+https://github.com/rhasspy/piper-phonemize.git@v1.1.0
         pip install piper-tts==1.2.0
         pip install pyinstaller
-    
+
     - name: Find espeak-ng-data path
       id: espeak-path
       run: |
         ESPEAK_PATH=$(python -c "import piper_phonemize; import os; print(os.path.join(os.path.dirname(piper_phonemize.__file__), 'espeak-ng-data'))")
         echo "path=$ESPEAK_PATH" >> $GITHUB_OUTPUT
-    
+
     - name: Build ARM binary
       run: |
         pyinstaller \
@@ -36,9 +37,10 @@ jobs:
           --onefile \
           --name piper-arm \
           piper_main.py
-    
+
     - name: Upload ARM binary
       uses: actions/upload-artifact@v4
       with:
         name: piper-arm-binary
         path: dist/piper-arm
+
