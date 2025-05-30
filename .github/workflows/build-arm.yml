@@ -1,177 +1,163 @@
-name: Build ARM Binary
-
+name: Build ARM Binary for Testing (Terminal Method)
 on:
-  push:
-    branches: [ main ]
   workflow_dispatch:
-
 jobs:
   build-arm:
-    runs-on: macos-14
+    runs-on: macos-14  # ARM runner (M1/M2/M3)
     
     steps:
     - uses: actions/checkout@v4
     
-    - name: Set up Python 3.11
+    - name: Set up Python 3.12
       uses: actions/setup-python@v4
       with:
-        python-version: '3.11'
+        python-version: '3.12'
     
-    - name: Download and extract pre-built Piper binaries
+    - name: Create piper-tts-bundle and setup virtual environment
       run: |
-        # Download the official pre-built binaries
-        curl -L "https://github.com/rhasspy/piper/releases/download/2023.11.14-2/piper_macos_aarch64.tar.gz" -o piper_macos_aarch64.tar.gz
+        # Create bundle folder
+        mkdir piper-tts-bundle
+        cd piper-tts-bundle
         
-        # Extract the binaries
-        tar -xzf piper_macos_aarch64.tar.gz
+        # Create virtual environment with Python 3.12
+        python3.12 -m venv venv
+        source venv/bin/activate
         
-        # List contents to see the structure
-        echo "=== Piper directory contents ==="
-        find piper/ -type f -name "*phonemize*" || echo "No phonemize files found with that pattern"
-        find piper/ -type f -name "*.so" || echo "No .so files found"
-        find piper/ -type f -name "*.dylib" || echo "No .dylib files found"
-        ls -la piper/
+        # Update pip
+        pip install --upgrade pip
         
-    - name: Set up Python environment with extracted piper_phonemize
+        # Install piper-tts
+        pip install piper-tts==1.2.0
+        
+    - name: Download voice models
       run: |
-        python -m pip install --upgrade pip
+        cd piper-tts-bundle
+        mkdir voices
+        cd voices
+        curl -L -O https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/lessac/medium/en_US-lessac-medium.onnx
+        curl -L -O https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/lessac/medium/en_US-lessac-medium.onnx.json
+        cd ..
         
-        # Install basic dependencies
-        pip install wheel setuptools
-        
-        # Create a local site-packages directory
-        mkdir -p local_packages
-        
-        # Copy piper_phonemize from extracted binaries if it exists as a Python package
-        if [ -d "piper/lib/python*/site-packages/piper_phonemize" ]; then
-          cp -r piper/lib/python*/site-packages/piper_phonemize local_packages/
-        elif [ -d "piper/piper_phonemize" ]; then
-          cp -r piper/piper_phonemize local_packages/
-        else
-          echo "Looking for piper_phonemize in other locations..."
-          find piper/ -name "*phonemize*" -type d
-        fi
-        
-        # Add local packages to Python path
-        echo "$(pwd)/local_packages" > $(python -c "import site; print(site.getsitepackages()[0])")/local_packages.pth
-        
-    - name: Install remaining dependencies
+    - name: Create piper_main.py
       run: |
-        # Install other dependencies that don't conflict
-        pip install numpy torch torchaudio --index-url https://download.pytorch.org/whl/cpu
-        pip install onnxruntime
-        pip install pyinstaller
-        
-        # Install piper-tts but skip piper-phonemize dependency
-        pip install --no-deps piper-tts==1.2.0 || echo "piper-tts install failed, continuing..."
-        
-    - name: Verify piper_phonemize availability
-      run: |
-        python -c "
-        try:
-            import piper_phonemize
-            print(f'piper_phonemize imported successfully from: {piper_phonemize.__file__}')
-            print(f'piper_phonemize version: {getattr(piper_phonemize, \"__version__\", \"unknown\")}')
-        except ImportError as e:
-            print(f'Failed to import piper_phonemize: {e}')
-            
-            # Try to find and manually set up the library
-            import os
-            import sys
-            
-            # Look for shared libraries
-            for root, dirs, files in os.walk('piper/'):
-                for file in files:
-                    if 'phonemize' in file and (file.endswith('.so') or file.endswith('.dylib')):
-                        print(f'Found phonemize library: {os.path.join(root, file)}')
-        "
-        
-    - name: Create wrapper for piper_phonemize if needed
-      run: |
-        # If direct import fails, create a wrapper that uses the binary library
-        cat > piper_phonemize_wrapper.py << 'EOF'
-        import os
+        cd piper-tts-bundle
+        cat > piper_main.py << 'EOF'
         import sys
-        import ctypes
-        from pathlib import Path
-        
-        def find_phonemize_lib():
-            """Find the piper_phonemize shared library"""
-            base_dir = Path(__file__).parent / "piper"
-            
-            # Look for shared library files
-            for ext in ['.dylib', '.so']:
-                for lib_file in base_dir.rglob(f"*phonemize*{ext}"):
-                    return str(lib_file)
-            return None
-        
-        def load_phonemize():
-            """Load the piper_phonemize library"""
-            lib_path = find_phonemize_lib()
-            if lib_path:
-                return ctypes.CDLL(lib_path)
-            else:
-                raise ImportError("Could not find piper_phonemize library")
-        
-        # Try to create a basic wrapper
-        try:
-            lib = load_phonemize()
-            print("Successfully loaded piper_phonemize library")
-        except Exception as e:
-            print(f"Failed to load library: {e}")
+        from piper import PiperVoice
+        import wave
+        import argparse
+
+        def main():
+            parser = argparse.ArgumentParser()
+            parser.add_argument("--model", required=True)
+            parser.add_argument("--output_file", required=True)
+            args = parser.parse_args()
+
+            # Read text from stdin
+            text = sys.stdin.read().strip()
+            if not text:
+                sys.exit(1)
+
+            # Load voice
+            voice = PiperVoice.load(args.model)
+
+            # Synthesize
+            with wave.open(args.output_file, "w") as wav_file:
+                voice.synthesize(text, wav_file)
+
+        if __name__ == "__main__":
+            main()
         EOF
         
-    - name: Find espeak-ng-data path
-      id: espeak-path
+    - name: Test basic installation
       run: |
-        # Look for espeak-ng-data in the extracted piper directory
-        ESPEAK_PATH=""
-        if [ -d "piper/espeak-ng-data" ]; then
-          ESPEAK_PATH="$(pwd)/piper/espeak-ng-data"
-        elif [ -d "piper/lib/espeak-ng-data" ]; then
-          ESPEAK_PATH="$(pwd)/piper/lib/espeak-ng-data"
-        else
-          # Try to find it anywhere in the piper directory
-          ESPEAK_PATH=$(find piper/ -name "espeak-ng-data" -type d | head -1)
-          if [ -n "$ESPEAK_PATH" ]; then
-            ESPEAK_PATH="$(pwd)/$ESPEAK_PATH"
-          fi
-        fi
+        cd piper-tts-bundle
+        source venv/bin/activate
+        cat > test_piper.py << 'EOF'
+        import wave
+        from piper import PiperVoice
+
+        model_path = "./voices/en_US-lessac-medium.onnx"
+        voice = PiperVoice.load(model_path)
+        text = "Hello, this is a test of Piper TTS on your Apple Silicon Mac!"
+
+        with wave.open("output.wav", "w") as wav_file:
+            voice.synthesize(text, wav_file)
+
+        print("Audio generated at output.wav")
+        EOF
         
-        if [ -z "$ESPEAK_PATH" ]; then
-          echo "espeak-ng-data not found, using system installation"
-          brew install espeak-ng
-          ESPEAK_PATH="/opt/homebrew/share/espeak-ng-data"
-        fi
+        python3 test_piper.py
+        ls -la output.wav
         
-        echo "Using espeak-ng-data from: $ESPEAK_PATH"
-        echo "path=$ESPEAK_PATH" >> $GITHUB_OUTPUT
-        
-    - name: Build ARM binary
+    - name: Install PyInstaller and build executable
       run: |
-        # Include the piper directory and local packages in the binary
-        pyinstaller \
-          --add-data "piper:piper" \
-          --add-data "local_packages:." \
-          --add-data "${{ steps.espeak-path.outputs.path }}:espeak-ng-data" \
-          --onefile \
-          --name piper-arm \
-          piper_main.py
-          
-    - name: Test the built binary
-      run: |
-        # Test if the binary was created successfully
-        if [ -f "dist/piper-arm" ]; then
-          echo "Binary built successfully"
-          file dist/piper-arm
-          ls -lh dist/piper-arm
-        else
-          echo "Binary build failed"
-          exit 1
-        fi
+        cd piper-tts-bundle
+        source venv/bin/activate
         
-    - name: Upload ARM binary
+        # Install PyInstaller
+        pip install pyinstaller
+        
+        # First attempt - basic build
+        pyinstaller --onefile --name piper piper_main.py
+        
+        # Test if it works
+        echo "Testing basic build..."
+        echo "Test speech" | ./dist/piper --model voices/en_US-lessac-medium.onnx --output_file test1.wav || echo "Basic build failed, trying with espeak-ng-data..."
+        
+        # If basic build fails, rebuild with espeak-ng-data
+        rm -rf dist build
+        pyinstaller --add-data "venv/lib/python3.12/site-packages/piper_phonemize/espeak-ng-data:piper_phonemize/espeak-ng-data" --onefile --name piper piper_main.py
+        
+    - name: Create Desktop piper folder structure
+      run: |
+        # Create the piper folder structure
+        mkdir -p Desktop/piper/bin Desktop/piper/voices Desktop/piper/lib
+        
+        # Copy the executable
+        cp piper-tts-bundle/dist/piper Desktop/piper/bin/
+        
+        # Copy voice models
+        cp piper-tts-bundle/voices/en_US-lessac-medium.onnx Desktop/piper/voices/
+        cp piper-tts-bundle/voices/en_US-lessac-medium.onnx.json Desktop/piper/voices/
+        
+        # Copy libraries (optional, since executable should be self-contained)
+        cp -r piper-tts-bundle/venv/lib/python3.12/site-packages/* Desktop/piper/lib/ || echo "Library copy failed, executable should be self-contained"
+        
+        # Clean up unnecessary files to reduce size
+        rm -rf Desktop/piper/lib/pip Desktop/piper/lib/setuptools Desktop/piper/lib/*.dist-info 2>/dev/null || true
+        
+    - name: Test final piper folder
+      run: |
+        cd Desktop/piper
+        echo "Test speech from final folder on Apple Silicon" | ./bin/piper --model voices/en_US-lessac-medium.onnx --output_file final_test.wav
+        ls -la final_test.wav
+        
+        # Check structure
+        echo "Final folder structure:"
+        ls -R .
+        
+    - name: Get folder size
+      run: |
+        echo "Size of piper folder:"
+        du -sh Desktop/piper
+        echo "Size of executable:"
+        ls -lh Desktop/piper/bin/piper
+        
+    - name: Create archive for upload
+      run: |
+        cd Desktop
+        tar -czf piper-arm-bundle.tar.gz piper/
+        ls -lh piper-arm-bundle.tar.gz
+        
+    - name: Upload ARM binary bundle
       uses: actions/upload-artifact@v4
       with:
-        name: piper-arm-binary
-        path: dist/piper-arm
+        name: piper-arm-bundle
+        path: Desktop/piper-arm-bundle.tar.gz
+        
+    - name: Upload standalone executable
+      uses: actions/upload-artifact@v4
+      with:
+        name: piper-arm-executable
+        path: piper-tts-bundle/dist/piper
