@@ -26,11 +26,16 @@ jobs:
         # Update pip
         pip install --upgrade pip
         
-        # Install piper-phonemize-cross first (ARM64 compatible)
-        pip install piper-phonemize-cross
+        # ARM64 Fix: Install piper-tts with dependency override
+        # This bypasses the piper-phonemize requirement issue on Apple Silicon
+        pip install piper-tts==1.2.0 --no-deps
         
-        # Install piper-tts (will use the cross-platform phonemize)
-        pip install piper-tts==1.2.0
+        # Install other required dependencies manually
+        pip install numpy
+        pip install onnxruntime
+        
+        # Try to install piper-phonemize-cross as fallback
+        pip install piper-phonemize-cross || echo "piper-phonemize-cross not available, continuing without it"
         
     - name: Download voice models
       run: |
