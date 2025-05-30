@@ -26,7 +26,10 @@ jobs:
         # Update pip
         pip install --upgrade pip
         
-        # Install piper-tts
+        # Install piper-phonemize-cross first (ARM64 compatible)
+        pip install piper-phonemize-cross
+        
+        # Install piper-tts (will use the cross-platform phonemize)
         pip install piper-tts==1.2.0
         
     - name: Download voice models
